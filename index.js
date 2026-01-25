@@ -32,7 +32,7 @@ app.use((req, res, next) => {
 app.use("/uploads/", express.static("uploads"));
 app.use("/api", routers);
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, () => {
   const restApiUrl = `http://localhost:${PORT}`;

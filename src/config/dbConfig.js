@@ -4,7 +4,8 @@ module.exports.connectWithRetry = () => {
   mongoose
     .connect(process.env.DB_URI)
     .then(() => {
-      console.log(`Database Connected Successfully`);
+      const dbName = mongoose.connection.name;
+      console.log(`Database Connected Successfully to ${dbName}`);
     })
     .catch((err) => {
       console.error("Database connection failed, retrying in 5 seconds...");

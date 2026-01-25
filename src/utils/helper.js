@@ -24,6 +24,44 @@ module.exports.transporter = nodemailer.createTransport({
   },
 });
 
+exports.sendEmail = async (options) => {
+  try {
+    const mailOptions = {
+      from: options.from,
+      to: options.to,
+      subject: options.subject,
+      html: options.html || options.text,
+      attachments: options.attachments || [],
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('Email send error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+exports.sendBulkEmails = async (emails) => {
+  const results = [];
+  
+  for (const email of emails) {
+    const result = await exports.sendEmail(email);
+    results.push(result);
+    
+    // Add delay to avoid spam triggers
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  
+  return results;
+};
+
+exports.generateNexleadsEmail = (name) => {
+  const username = name.toLowerCase().replace(/\s+/g, '');
+  const randomNum = Math.floor(Math.random() * 1000);
+  return `${username}${randomNum}@nexleads.com`;
+};
+
 module.exports.generateRandomPassword=(length = 8)=> {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+[]{}<>?';
   let password = '';
