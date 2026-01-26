@@ -21,7 +21,6 @@ router.get('/profile', verifyToken, getProfile);
 router.get('/stats', verifyToken, getDashboardStats);
 
 router.get('/search', verifyToken, leadControllers.searchLeads);
-router.get('/search', verifyToken, leadControllers.searchLeads);
 router.post('/save-lead', verifyToken, checkLeadsLimit, leadControllers.saveLead);
 router.get('/get-my-Leads', verifyToken, leadControllers.getMyLeads);
 router.put('/:leadId/status', verifyToken, leadControllers.updateLeadStatus);
