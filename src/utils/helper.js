@@ -14,7 +14,7 @@ module.exports.sendResponse = (status, data, message, error) => {
   return ResponseObj;
 };
  
-module.exports.transporter = nodemailer.createTransport({
+const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 587,
   secure: false, // true for port 587, false for other ports
@@ -23,6 +23,7 @@ module.exports.transporter = nodemailer.createTransport({
     pass: process.env.SMTP_PASS,
   },
 });
+module.exports.transporter = transporter;
 
 exports.sendEmail = async (options) => {
   try {

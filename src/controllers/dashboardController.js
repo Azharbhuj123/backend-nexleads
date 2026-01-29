@@ -4,7 +4,7 @@ const Project = require('../models/Project');
 
 exports.getDashboardStats = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user.id;
 
     const totalEmailsSent = await Email.countDocuments({ 
       userId, 

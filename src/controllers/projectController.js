@@ -3,12 +3,20 @@ const Lead = require('../models/Lead');
 
 exports.createProject = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const { leadId, title, description, budget, deadline } = req.body;
+    const userId = req.user.id;
+    const { leadId, title, company, description, budget, deadline } = req.body;
 
     const lead = await Lead.findOne({ _id: leadId, userId });
     if (!lead) {
       return res.status(404).json({ message: 'Lead not found' });
+    }
+      const existingProject = await Project.findOne({ leadId, userId });
+    
+    if (existingProject) {
+      return res.status(200).json({
+        message: 'Project already exists for this lead',
+        project: existingProject,
+      });
     }
 
     const project = await Project.create({
@@ -16,13 +24,12 @@ exports.createProject = async (req, res) => {
       leadId,
       title,
       description,
+      company,
       budget,
       deadline,
       status: 'in_discussion',
     });
 
-    // Update lead status
-    lead.status = 'in_discussion';
     await lead.save();
 
     res.status(201).json({
@@ -36,8 +43,10 @@ exports.createProject = async (req, res) => {
 
 exports.getProjects = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user.id;
     const { status } = req.query;
+
+    console.log('on this function')
 
     const filter = { userId };
     if (status) filter.status = status;
@@ -67,7 +76,7 @@ exports.updateProjectStatus = async (req, res) => {
     const { status } = req.body;
 
     const project = await Project.findOneAndUpdate(
-      { _id: projectId, userId: req.user._id },
+      { _id: projectId, userId: req.user.id },
       { status },
       { new: true }
     ).populate('leadId');
@@ -122,7 +131,7 @@ exports.updateProject = async (req, res) => {
     const updates = req.body;
 
     const project = await Project.findOneAndUpdate(
-      { _id: projectId, userId: req.user._id },
+      { _id: projectId, userId: req.user.id },
       updates,
       { new: true }
     ).populate('leadId');

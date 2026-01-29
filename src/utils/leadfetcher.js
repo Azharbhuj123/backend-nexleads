@@ -1,6 +1,7 @@
 const axios = require('axios');
 const { Builder, By, until, Key } = require('selenium-webdriver');
 const chrome = require('selenium-webdriver/chrome');
+const { fetchGPTLeads } = require('../controllers/gptContoroller');
 
 class FacebookLeadFetcher {
   constructor() {
@@ -14,7 +15,7 @@ class FacebookLeadFetcher {
   async initialize() {
     try {
       const options = new chrome.Options();
-      
+
       // Stealth settings to avoid detection
       options.addArguments('--disable-blink-features=AutomationControlled');
       options.addArguments('--disable-dev-shm-usage');
@@ -22,7 +23,7 @@ class FacebookLeadFetcher {
       options.addArguments('--disable-gpu');
       options.addArguments('--window-size=1920,1080');
       options.addArguments('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
-      
+
       // Optional: Run in headless mode (comment out to see browser)
       // options.addArguments('--headless=new');
 
@@ -46,7 +47,7 @@ class FacebookLeadFetcher {
     try {
       console.log('Navigating to Facebook login page...');
       await this.driver.get('https://www.facebook.com/');
-      
+
       // Wait for page to load
       await this.driver.sleep(2000);
 
@@ -70,7 +71,7 @@ class FacebookLeadFetcher {
       await loginButton.click();
 
       console.log('Login credentials submitted, waiting for redirect...');
-      
+
       // Wait for successful login (check for homepage elements)
       await this.driver.sleep(5000);
 
@@ -91,7 +92,7 @@ class FacebookLeadFetcher {
           console.log('⚠️  Two-factor authentication required. Please complete it manually in the browser.');
           console.log('Waiting 60 seconds for manual 2FA completion...');
           await this.driver.sleep(60000);
-          
+
           // Check again after 2FA wait
           try {
             await this.driver.wait(
@@ -193,7 +194,7 @@ class FacebookLeadFetcher {
    */
   async extractPeopleLeads(keyword, limit) {
     const leads = [];
-    
+
     try {
       // Find all people result cards
       const resultCards = await this.driver.findElements(
@@ -205,7 +206,7 @@ class FacebookLeadFetcher {
       for (let i = 0; i < Math.min(resultCards.length, limit); i++) {
         try {
           const card = resultCards[i];
-          
+
           // Extract name
           let name = 'N/A';
           try {
@@ -284,7 +285,7 @@ class FacebookLeadFetcher {
    */
   async extractPageLeads(keyword, limit) {
     const leads = [];
-    
+
     try {
       const resultCards = await this.driver.findElements(
         By.css('div[role="article"]')
@@ -293,7 +294,7 @@ class FacebookLeadFetcher {
       for (let i = 0; i < Math.min(resultCards.length, limit); i++) {
         try {
           const card = resultCards[i];
-          
+
           let name = 'N/A';
           let profileUrl = '';
           let category = '';
@@ -302,7 +303,7 @@ class FacebookLeadFetcher {
           try {
             const nameElement = await card.findElement(By.css('a span'));
             name = await nameElement.getText();
-            
+
             const linkElement = await card.findElement(By.css('a'));
             profileUrl = await linkElement.getAttribute('href');
             profileUrl = profileUrl.split('?')[0];
@@ -356,7 +357,7 @@ class FacebookLeadFetcher {
    */
   async extractGroupLeads(keyword, limit) {
     const leads = [];
-    
+
     try {
       const resultCards = await this.driver.findElements(
         By.css('div[role="article"]')
@@ -365,7 +366,7 @@ class FacebookLeadFetcher {
       for (let i = 0; i < Math.min(resultCards.length, limit); i++) {
         try {
           const card = resultCards[i];
-          
+
           let name = 'N/A';
           let profileUrl = '';
           let members = '';
@@ -374,7 +375,7 @@ class FacebookLeadFetcher {
           try {
             const nameElement = await card.findElement(By.css('a span'));
             name = await nameElement.getText();
-            
+
             const linkElement = await card.findElement(By.css('a'));
             profileUrl = await linkElement.getAttribute('href');
             profileUrl = profileUrl.split('?')[0];
@@ -508,7 +509,7 @@ exports.fetchTwitterLeads = async (keyword, filters) => {
 
 exports.fetchFacebookLeads = async (keyword, filters = {}) => {
   const scraper = new FacebookLeadFetcher();
-  
+
   try {
     // Initialize browser
     await scraper.initialize();
@@ -550,20 +551,23 @@ exports.fetchFacebookLeads = async (keyword, filters = {}) => {
 exports.fetchLeadsFromPlatforms = async (keyword, platforms, filters) => {
   const leads = [];
 
-  if (platforms.includes('LinkedIn')) {
-    const linkedInLeads = await exports.fetchLinkedInLeads(keyword, filters);
-    leads.push(...linkedInLeads);
-  }
+  // if (platforms.includes('LinkedIn')) {
+  //   const linkedInLeads = await exports.fetchLinkedInLeads(keyword, filters);
+  //   leads.push(...linkedInLeads);
+  // }
 
-  if (platforms.includes('Upwork')) {
-    const upworkLeads = await exports.fetchUpworkLeads(keyword, filters);
-    leads.push(...upworkLeads);
-  }
+  // if (platforms.includes('Upwork')) {
+  //   const upworkLeads = await exports.fetchUpworkLeads(keyword, filters);
+  //   leads.push(...upworkLeads);
+  // }
 
-  if (platforms.includes('Twitter')) {
-    const twitterLeads = await exports.fetchTwitterLeads(keyword, filters);
-    leads.push(...twitterLeads);
-  }
+  // if (platforms.includes('Twitter')) {
+  //   const twitterLeads = await exports.fetchTwitterLeads(keyword, filters);
+  //   leads.push(...twitterLeads);
+  // }
+
+  const gptLeads = await fetchGPTLeads(keyword, 10);
+  leads.push(...gptLeads);
 
   return leads;
 };
@@ -573,7 +577,7 @@ exports.fetchLeadsFromPlatforms = async (keyword, platforms, filters) => {
 // exports.testFacebookScraper = async () => {
 async function testFacebookScraper() {
   const scraper = new FacebookLeadFetcher();
-  
+
   try {
     // 1. Initialize
     await scraper.initialize();
@@ -615,4 +619,4 @@ async function testFacebookScraper() {
 }
 
 // Uncomment to test
-testFacebookScraper();
+// testFacebookScraper();
