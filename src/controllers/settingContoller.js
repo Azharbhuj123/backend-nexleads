@@ -1,5 +1,5 @@
 const User = require('../models/user');
-const Subscription = require('../models/Subscription');
+const Subscription = require('../models/subscription');
 const bcrypt = require('bcryptjs');
 
 exports.updatePersonalInfo = async (req, res) => {
