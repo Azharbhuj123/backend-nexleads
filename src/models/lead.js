@@ -40,6 +40,11 @@ const leadSchema = new mongoose.Schema({
     enum: ['new', 'contacted', 'responded', 'in_discussion', 'ongoing', 'completed', 'rejected'],
     default: 'new',
   },
+  interest: {
+    type: String,
+    enum: ['interested', 'not_interested'],
+    default: 'interested',
+  },
   emailsSent: {
     type: Number,
     default: 0,

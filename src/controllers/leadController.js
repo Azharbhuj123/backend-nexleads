@@ -129,3 +129,28 @@ exports.updateLeadStatus = async (req, res) => {
     res.status(500).json({ message: 'Error updating lead', error: error.message });
   }
 };
+
+
+exports.updateLeadInterest = async (req, res) => {
+  try {
+    const { leadId } = req.params;
+    const { interest } = req.body;
+
+    const lead = await Lead.findOneAndUpdate(
+      { _id: leadId, userId: req.user.id },
+      { interest },
+      { new: true }
+    );
+
+    if (!lead) {
+      return res.status(404).json({ message: 'Lead not found' });
+    }
+
+    res.json({
+      message: 'Lead status updated',
+      lead,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error updating lead', error: error.message });
+  }
+};

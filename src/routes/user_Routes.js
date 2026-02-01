@@ -26,6 +26,7 @@ router.get('/search', verifyToken, checkLeadsLimit, leadControllers.searchLeads)
 router.post('/save-lead', verifyToken, checkLeadsLimit, leadControllers.saveLead);
 router.get('/get-my-Leads', verifyToken, leadControllers.getMyLeads);
 router.put('/leads/:leadId/status', verifyToken, leadControllers.updateLeadStatus);
+router.put('/leads-interest/:leadId', verifyToken, leadControllers.updateLeadInterest);
 
 router.post(
   '/compose',

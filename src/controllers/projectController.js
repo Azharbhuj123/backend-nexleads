@@ -46,8 +46,6 @@ exports.getProjects = async (req, res) => {
     const userId = req.user.id;
     const { status } = req.query;
 
-    console.log('on this function')
-
     const filter = { userId };
     if (status) filter.status = status;
 
