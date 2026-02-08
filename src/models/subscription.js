@@ -11,6 +11,9 @@ const subscriptionSchema = new mongoose.Schema({
     enum: ['free', 'pro', 'platinum'],
     required: true,
   },
+  billingCycle: {
+    type: String
+  },
   price: {
     type: Number,
     required: true,

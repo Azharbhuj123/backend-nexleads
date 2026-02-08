@@ -55,7 +55,7 @@ router.delete('/project-del/:projectId', verifyToken, projectsController.deleteP
 router.get('/followUp-stats', verifyToken, followupsController.getFollowUpStats);
 router.post('/followUp-record', verifyToken, followupsController.createFollowUpRecord);
 router.post('/:followUpId/send', verifyToken, followupsController.sendFollowUp);
-router.put('/:followUpId', verifyToken, followupsController.updateFollowUpStats);
+router.put('/followups/:followUpId', verifyToken, followupsController.updateFollowUpStats);
 
 
 router.put('/personal', verifyToken, settingsController.updatePersonalInfo)
@@ -67,7 +67,9 @@ router.post(
 );
 router.put('/password', verifyToken, settingsController.changePassword);
 router.get('/plans', settingsController.getSubscriptionPlans);
+router.post('/payment-intent', verifyToken, settingsController.createPaymentIntent);
 router.post('/subscription', verifyToken, settingsController.updateSubscription);
 router.get('/subscription/history', verifyToken, settingsController.getSubscriptionHistory);
+router.post('/subscription/cancel', verifyToken, settingsController.cancelSubscription);
 
 module.exports = router;
