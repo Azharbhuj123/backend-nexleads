@@ -1,8 +1,8 @@
+require("dotenv").config();
 const { PutObjectCommand } = require("@aws-sdk/client-s3");
 const { v4: uuidv4 } = require("uuid");
 const path = require("path");
 const { s3 } = require("../config/s3Config");
-require("dotenv").config();
 
 const getMimeType = (ext) => {
   switch (ext.toLowerCase()) {
@@ -23,9 +23,15 @@ const getMimeType = (ext) => {
 };
 
 const uploadToS3 = async (fileBuffer, originalName) => {
+
+
+  console.log("AWS_ACCESS_KEY_ID:", process.env.AWS_ACCESS_KEY_ID);
+  console.log("AWS_SECRET_ACCESS_KEY:", process.env.AWS_SECRET_ACCESS_KEY);
+  console.log("AWS_REGION:", process.env.AWS_REGION);
+  
   const folder = process.env.AWS_FOLDER_NAME; // fixed folder name
   const ext = path.extname(originalName);
-  
+
 
   const filename = `${folder}/${uuidv4()}${ext}`;
 
