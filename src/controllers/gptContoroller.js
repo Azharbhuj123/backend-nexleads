@@ -39,3 +39,70 @@ ONLY return valid JSON. No explanation.
   }
 };
 
+
+exports.generateOrRewriteEmail = async (req, res) => {
+  try {
+    const { mode, body, prompt } = req.body;
+
+    let systemPrompt = `
+You are a professional email copywriter.
+Return ONLY valid JSON.
+Body must be in clean HTML.
+`;
+
+    let userPrompt = "";
+
+    if (mode === "rewrite") {
+      userPrompt = `
+Rewrite the following email body.
+
+Instruction:
+${prompt || "Make it more professional"}
+
+Email Body:
+${body}
+
+Return JSON:
+{
+  "body": "<html>"
+}
+`;
+    }
+
+    if (mode === "generate") {
+      userPrompt = `
+Generate a professional sales email.
+
+Prompt:
+${prompt}
+
+Return JSON:
+{
+  "subject": "",
+  "body": "<html>"
+}
+`;
+    }
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.7,
+    });
+
+    const raw = response.choices[0].message.content
+      .replace(/```json/g, "")
+      .replace(/```/g, "")
+      .trim();
+
+    const parsed = JSON.parse(raw);
+
+    res.status(200).json(parsed);
+  } catch (err) {
+    console.error("AI email error:", err);
+    res.status(500).json({ message: "AI generation failed" });
+  }
+};

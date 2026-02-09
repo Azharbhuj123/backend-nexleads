@@ -9,6 +9,7 @@ const followupsController = require('../controllers/followUpController');
 const settingsController = require('../controllers/settingContoller');
 const { checkBulkEmailAccess, validateEmail, handleValidationErrors, checkLeadsLimit } = require('../middlewares/validate');
 const { upload } = require('../middlewares/upload');
+const { generateOrRewriteEmail } = require('../controllers/gptContoroller');
 
 const router = express.Router();
 
@@ -43,6 +44,8 @@ router.post('/upset-email', verifyToken, emailsController.upsetEmail);
 router.post('/draft', verifyToken, emailsController.saveDraft);
 router.put('/move/:emailId', verifyToken, emailsController.moveToFolder);
 // router.get('/:emailId', verifyToken, emailsController.getEmailById);
+
+router.post("/ai-assist", verifyToken, generateOrRewriteEmail);
 
 
 router.post('/create-project', verifyToken, projectsController.createProject);
