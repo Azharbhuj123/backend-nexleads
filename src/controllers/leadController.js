@@ -47,7 +47,7 @@ exports.searchLeads = async (req, res) => {
     }
 
     // 3️⃣ Save to DB
-    const savedLeads = await Lead.insertMany(newLeads.map(l => ({ ...l, userId })));
+    const savedLeads = await Lead.insertMany(newLeads.map(l => ({ ...l, userId })), { ordered: false });
 
     // 4️⃣ Update subscription usage counter
     req.user.subscription.leadsUsed += savedLeads.length;
