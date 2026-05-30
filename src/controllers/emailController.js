@@ -60,14 +60,24 @@ exports.composeEmail = async (req, res) => {
 
       const emailOptions = {
         from: `NexLeads <${process.env.SMTP_EMAIL}>`,
-        replyTo: userData.nexleadsEmail,
+        replyTo: userData.email,
         to: lead.email,
         subject,
         html: body + trackingPixel,
         attachments: attachments.map(att => ({ filename: att.filename, path: att.url })),
+        headers: {
+          "X-Entity-Ref-ID": email._id.toString()
+        }
       };
 
-      await sendEmail(emailOptions);
+      const result = await sendEmail(emailOptions);
+
+      if (result.success) {
+        email.messageId = result.messageId;
+        email.threadId = result.messageId;
+        email.sentAt = new Date();
+        await email.save();
+      }
 
       // Update lead stats
       await Lead.findByIdAndUpdate(lead._id, {
@@ -278,7 +288,7 @@ exports.upsetEmail = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-     const email = await Email.findOneAndUpdate(
+    const email = await Email.findOneAndUpdate(
       { _id: emailId, userId: userId },
       { body },
       { new: true }
@@ -287,21 +297,17 @@ exports.upsetEmail = async (req, res) => {
     if (!email) {
       return res.status(404).json({ message: 'Email not found' });
     }
-    const messageId = `<${email._id}@nexleads.com`;
-    const threadId = email.threadId || messageId;
-
     const trackingPixel = `
         <img src="${process.env.API_BASE_URL}/user/open/${email._id}.png" style="display:none" />
       `;
 
     const emailOptions = {
       from: `NexLeads <${process.env.SMTP_EMAIL}>`,
-      replyTo: userData.nexleadsEmail,
+      replyTo: userData.email,
       to: email.to,
       subject: email.subject,
       html: body + trackingPixel,
       headers: {
-        'Message-ID': messageId,
         'X-Entity-Ref-ID': email._id.toString(),
       }
     };
@@ -311,14 +317,17 @@ exports.upsetEmail = async (req, res) => {
       emailOptions.headers['References'] = email.references ? email.references.join(' ') : email.inReplyTo;
     }
 
-     const info = await sendEmail(emailOptions);
-    
-    // Update email with message tracking info
-    email.messageId = messageId;
-    email.threadId = threadId;
-    email.sentAt = new Date();
-    await email.save();
-    
+    const result = await sendEmail(emailOptions);
+
+    if (result.success) {
+      email.messageId = result.messageId;
+      if (!email.threadId) {
+        email.threadId = result.messageId;
+      }
+      email.sentAt = new Date();
+      await email.save();
+    }
+
     // Update lead stats
     if (email.leadId) {
       await Lead.findByIdAndUpdate(email.leadId, {
@@ -328,16 +337,16 @@ exports.upsetEmail = async (req, res) => {
     }
 
     res.status(201).json({
-    message: "Email sent successfully",
-    email,
-  });
-} catch (error) {
-  console.error("Compose email error:", error);
-  res.status(500).json({
-    message: "Error sending email",
-    error: error.message,
-  });
-}
+      message: "Email sent successfully",
+      email,
+    });
+  } catch (error) {
+    console.error("Compose email error:", error);
+    res.status(500).json({
+      message: "Error sending email",
+      error: error.message,
+    });
+  }
 };
 
 // NEW: Poll Gmail for replies
@@ -345,13 +354,13 @@ exports.checkEmailReplies = async (req, res) => {
   try {
     const userId = req.user.id;
     const userData = await User.findById(userId);
-    
+
     if (!userData) {
       return res.status(400).json({ message: "Gmail not connected" });
     }
-    
+
     await fetchNewReplies(userData);
-    
+
     res.status(200).json({ message: "Email replies synced successfully" });
   } catch (error) {
     console.error("Check email replies error:", error);

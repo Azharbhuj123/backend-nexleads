@@ -22,7 +22,6 @@ async function fetchNewReplies(userData) {
         }
 
         const searchCriteria = [
-          'UNSEEN',
           ['SINCE', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)]
         ];
 
@@ -68,8 +67,19 @@ async function fetchNewReplies(userData) {
 }
 
 async function processIncomingEmail(parsed, userData) {
-  const inReplyTo = parsed.inReplyTo;
-  const references = parsed.references || [];
+  console.log("Incoming Email:", {
+    messageId: parsed.messageId,
+    inReplyTo: parsed.inReplyTo,
+    references: parsed.references
+  });
+
+  const existingEmail = await Email.findOne({
+    messageId: parsed.messageId
+  });
+
+  if (existingEmail)
+    return;
+
   const from = parsed.from?.value?.[0]?.address;
   const to = parsed.to?.value?.[0]?.address;
 
@@ -77,19 +87,38 @@ async function processIncomingEmail(parsed, userData) {
 
   let originalEmail = null;
 
-  if (inReplyTo) {
+  // Step 1: Match by inReplyTo
+  if (parsed.inReplyTo) {
+    originalEmail = await Email.findOne({
+      messageId: parsed.inReplyTo
+    });
+  }
+
+  // Step 2: Match by references
+  if (!originalEmail && parsed.references) {
+    originalEmail = await Email.findOne({
+      messageId: {
+        $in: parsed.references
+      }
+    });
+  }
+
+  // Step 3: Fallback by sender email
+  if (!originalEmail) {
     originalEmail = await Email.findOne({
       userId: userData._id,
-      messageId: inReplyTo,
+      to: from,
       type: 'sent'
-    });
+    }).sort({ sentAt: -1 });
   }
 
   let lead = null;
 
   if (originalEmail?.leadId) {
     lead = await Lead.findById(originalEmail.leadId);
-  } else {
+  }
+
+  if (!lead) {
     lead = await Lead.findOne({
       userId: userData._id,
       email: from
@@ -106,13 +135,14 @@ async function processIncomingEmail(parsed, userData) {
     type: 'received',
     folder: 'inbox',
     messageId: parsed.messageId,
-    inReplyTo,
-    threadId: originalEmail?._id || parsed.messageId,
+    inReplyTo: parsed.inReplyTo,
+    references: parsed.references || [],
+    threadId: originalEmail?.threadId || originalEmail?.messageId || parsed.messageId,
     sentAt: parsed.date || new Date(),
   });
 
   if (lead) {
-    lead.responses += 1;
+    lead.responses = (lead.responses || 0) + 1;
     lead.status = 'responded';
     await lead.save();
   }

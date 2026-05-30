@@ -33,6 +33,8 @@ exports.sendEmail = async (options) => {
       subject: options.subject,
       html: options.html || options.text,
       attachments: options.attachments || [],
+      headers: options.headers || {},
+      replyTo: options.replyTo || undefined,
     };
 
     const info = await transporter.sendMail(mailOptions);
