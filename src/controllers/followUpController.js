@@ -5,7 +5,7 @@ const { sendBulkEmails } = require('../utils/helper');
 
 exports.getFollowUpStats = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user.id;
     const { platform, dateFrom, dateTo } = req.query;
 
     const filter = { userId };
@@ -17,6 +17,7 @@ exports.getFollowUpStats = async (req, res) => {
     }
 
     const followUps = await FollowUp.find(filter).sort({ createdAt: -1 });
+    console.log('Fetched follow-up stats', { followUps, count: followUps.length, userId: userId.toString() });
 
     res.json({
       count: followUps.length,
@@ -29,7 +30,7 @@ exports.getFollowUpStats = async (req, res) => {
 
 exports.sendFollowUp = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user.id;
     const { followUpId } = req.params;
     const { subject, body, recipients } = req.body;
 
@@ -78,7 +79,7 @@ exports.sendFollowUp = async (req, res) => {
 
 exports.createFollowUpRecord = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user.id;
     const { jobField, platform, totalLeadsSent } = req.body;
 
     const followUp = await FollowUp.create({
@@ -103,7 +104,7 @@ exports.updateFollowUpStats = async (req, res) => {
     const updates = req.body;
 
     const followUp = await FollowUp.findOneAndUpdate(
-      { _id: followUpId, userId: req.user._id },
+      { _id: followUpId, userId: req.user.id },
       updates,
       { new: true }
     );
