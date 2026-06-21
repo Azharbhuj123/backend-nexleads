@@ -1,6 +1,33 @@
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
+
+// ─── DNS resolver override ────────────────────────────────────────────────────
+// Some networks' default DNS resolvers fail to resolve specific hosts (e.g.
+// api.scraperapi.com → "getaddrinfo EAI_AGAIN"), which breaks lead fetching even
+// though the host is valid and reachable. Point Node's resolver at reliable
+// public DNS for this process only — no system-wide change.
+//
+// NOTE: dns.setServers() only affects dns.resolve*()  — it does NOT affect
+// dns.lookup(), which is what Node's HTTP layer (axios) uses by default. So this
+// alone fixes Mongo's SRV lookups (which use dns.resolve), but outbound HTTP
+// still needs a custom lookup — see installGlobalDnsLookup() below.
+// Override the servers via DNS_SERVERS (comma-separated), or disable entirely by
+// setting DNS_SERVERS="" on networks where these public resolvers are blocked.
+const dns = require("dns");
+const { installGlobalDnsLookup } = require("./src/utils/dnsFix");
+const dnsServers =
+  process.env.DNS_SERVERS !== undefined
+    ? process.env.DNS_SERVERS.split(",").map((s) => s.trim()).filter(Boolean)
+    : ["8.8.8.8", "8.8.4.4"];
+if (dnsServers.length) {
+  dns.setServers(dnsServers);
+  // Route dns.lookup() (and therefore all outbound HTTP) through dns.resolve,
+  // which honors the public DNS servers set above.
+  installGlobalDnsLookup();
+  console.log(`[INFO]  DNS resolver set to: ${dnsServers.join(", ")} (HTTP lookup patched)`);
+}
+
 const geoip = require("geoip-lite");
 const routers = require("./src/allRoutes");
 const { connectWithRetry } = require("./src/config/dbConfig");

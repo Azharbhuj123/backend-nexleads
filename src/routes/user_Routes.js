@@ -47,7 +47,7 @@ router.put('/move/:emailId', verifyToken, emailsController.moveToFolder);
 
 
 router.get('/open/:emailId.png', emailsController.trackingEmail);
-router.post('/check-replies',  emailsController.checkEmailReplies);
+router.post('/check-replies', emailsController.checkEmailReplies);
 
 // router.get('/:emailId', verifyToken, emailsController.getEmailById);
 

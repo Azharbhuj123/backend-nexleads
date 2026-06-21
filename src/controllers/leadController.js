@@ -46,8 +46,32 @@ exports.searchLeads = async (req, res) => {
       });
     }
 
-    // 3️⃣ Save to DB
-    const savedLeads = await Lead.insertMany(newLeads.map(l => ({ ...l, userId })), { ordered: false });
+    // 3️⃣ Save to DB.
+    // ordered:false → keep inserting past any individual bad doc.
+    // rmValidationErrors:false / throwOnValidationError:false → don't abort the
+    // whole batch (or silently drop everything) when one doc fails validation;
+    // we want every valid scraped lead persisted. Ensure a name fallback so a
+    // missing scraped name never blocks an otherwise-valid lead.
+    const docs = newLeads.map(l => ({
+      ...l,
+      userId,
+      name: l.name || l.company || 'Unknown',
+    }));
+
+    let savedLeads = [];
+    try {
+      savedLeads = await Lead.insertMany(docs, { ordered: false, throwOnValidationError: true });
+    } catch (insertErr) {
+      // BulkWriteError: the valid docs still got inserted; collect them and log
+      // why the rest were rejected instead of failing the whole request.
+      savedLeads = insertErr.insertedDocs || [];
+      const reasons = (insertErr.writeErrors || insertErr.errors || [])
+        .map(e => (e.err && e.err.errmsg) || e.message)
+        .filter(Boolean);
+      if (reasons.length) {
+        console.warn('[searchLeads] some leads were not saved:', reasons.slice(0, 5));
+      }
+    }
 
     // 4️⃣ Update subscription usage counter
     req.user.subscription.leadsUsed += savedLeads.length;

@@ -7,8 +7,10 @@ const leadSchema = new mongoose.Schema({
     required: true,
   },
   name: {
+    // Scraped pages often expose an email but no parseable name, so this can't
+    // be strictly required or those valid leads silently fail to insert.
     type: String,
-    required: true,
+    default: 'Unknown',
   },
   email: {
     type: String,
@@ -16,12 +18,13 @@ const leadSchema = new mongoose.Schema({
   },
   platform: {
     type: String,
-    enum: ['LinkedIn', 'Upwork', 'Twitter', 'Other'],
-    required: true,
+    // Must cover every platform detectPlatform() in leadfetcher.js can emit,
+    // otherwise enum validation drops Google/Facebook/Reddit/Indeed leads.
+    enum: ['Google', 'LinkedIn', 'Upwork', 'Twitter', 'Facebook', 'Reddit', 'Indeed', 'Other'],
+    default: 'Other',
   },
   jobField: {
     type: String,
-    required: true,
   },
   jobTitle: {
     type: String,
