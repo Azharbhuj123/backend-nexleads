@@ -3,6 +3,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const Subscription = require('../models/subscription');
+
 const { transporter, generateNexleadsEmail } = require('../utils/helper');
 
 // Generate JWT
@@ -119,7 +121,14 @@ exports.login = async (req, res) => {
     res.json({
       success: true,
       token,
-      user: { id: user._id, name: user.name, email: user.email, type: user.type }
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        type: user.type,
+        profilePicture: user.profilePicture,
+        bio: user.bio,
+      }
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -184,12 +193,12 @@ exports.resetPassword = async (req, res) => {
 
 exports.getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password');
+    const user = await User.findById(req.user.id).select('-password');
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-
-    res.json({ user });
+    const subscription = await Subscription.findOne({ userId: user._id });
+    res.json({ user, subscription });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching profile', error: error.message });
   }
