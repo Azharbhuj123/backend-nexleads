@@ -44,6 +44,7 @@ router.get('/get-emails', verifyToken, emailsController.getEmails);
 router.post('/upset-email', verifyToken, emailsController.upsetEmail);
 router.post('/draft', verifyToken, emailsController.saveDraft);
 router.put('/move/:emailId', verifyToken, emailsController.moveToFolder);
+router.delete('/email/:emailId', verifyToken, emailsController.deleteEmail);
 
 
 router.get('/open/:emailId.png', emailsController.trackingEmail);

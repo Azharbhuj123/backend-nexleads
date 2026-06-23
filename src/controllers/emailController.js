@@ -134,7 +134,7 @@ exports.trackingEmail = async (req, res) => {
 
 exports.sendBulkEmail = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user.id;
     const { recipients, subject, body } = req.body;
 
     if (!Array.isArray(recipients) || recipients.length === 0) {
@@ -212,7 +212,7 @@ exports.getEmailById = async (req, res) => {
 
     const email = await Email.findOne({
       _id: emailId,
-      userId: req.user._id,
+      userId: req.user.id,
     }).populate('leadId');
 
     if (!email) {
@@ -232,12 +232,17 @@ exports.getEmailById = async (req, res) => {
 
 exports.saveDraft = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user.id;
     const { to, subject, body } = req.body;
+
+    const userData = await User.findById(userId);
+    if (!userData) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
     const draft = await Email.create({
       userId,
-      from: req.user.nexleadsEmail,
+      from: userData.nexleadsEmail,
       to: to || '',
       subject: subject || '',
       body: body || '',
@@ -251,6 +256,28 @@ exports.saveDraft = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: 'Error saving draft', error: error.message });
+  }
+};
+
+exports.deleteEmail = async (req, res) => {
+  try {
+    const { emailId } = req.params;
+
+    const email = await Email.findOneAndDelete({
+      _id: emailId,
+      userId: req.user.id,
+    });
+
+    if (!email) {
+      return res.status(404).json({ message: 'Email not found' });
+    }
+
+    res.json({
+      message: 'Email permanently deleted',
+      email,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error deleting email', error: error.message });
   }
 };
 
