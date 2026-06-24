@@ -284,13 +284,24 @@ function applyDateFilters(leads, { dateFrom, dateTo } = {}) {
  *  4. Parse page with platform-specific parser to extract email + metadata
  *  5. Return only leads with at least one valid email
  */
-async function fetchLeadsForPlatform(keyword, platform = 'Google', filters = {}) {
+async function fetchLeadsForPlatform(keyword, platform = 'Google', filters = {}, options = {}) {
   validateEnv();
 
   const cacheKey = `${platform.toLowerCase()}:${keyword}`;
   const cached   = cache.get(cacheKey);
   if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
     logger.info('Cache hit', { platform, keyword, count: cached.leads.length });
+    if (options.includeStats) {
+      return {
+        leads: cached.leads,
+        stats: cached.stats || {
+          platform,
+          serpResults: cached.leads.length,
+          withEmail: cached.leads.length,
+          afterDateFilter: cached.leads.length,
+        },
+      };
+    }
     return cached.leads;
   }
 
@@ -317,6 +328,12 @@ async function fetchLeadsForPlatform(keyword, platform = 'Google', filters = {})
 
   if (!allResults.length) {
     logger.warn(`No SERP results`, { platform, keyword });
+    if (options.includeStats) {
+      return {
+        leads: [],
+        stats: { platform, serpResults: 0, withEmail: 0, afterDateFilter: 0 },
+      };
+    }
     return [];
   }
 
@@ -377,13 +394,19 @@ async function fetchLeadsForPlatform(keyword, platform = 'Google', filters = {})
 
   const filtered = applyDateFilters(leads, filters);
 
-  logger.info(`${platform} fetch complete`, {
+  const stats = {
+    platform,
     serpResults:     allResults.length,
     withEmail:       leads.length,
     afterDateFilter: filtered.length,
-  });
+  };
 
-  cache.set(cacheKey, { ts: Date.now(), leads: filtered });
+  logger.info(`${platform} fetch complete`, stats);
+
+  cache.set(cacheKey, { ts: Date.now(), leads: filtered, stats });
+  if (options.includeStats) {
+    return { leads: filtered, stats };
+  }
   return filtered;
 }
 
@@ -427,6 +450,56 @@ async function fetchLeadsFromPlatforms(keyword, platforms = [], filters = {}) {
   });
 }
 
+async function fetchLeadsFromPlatformsWithStats(keyword, platforms = [], filters = {}) {
+  const SUPPORTED = ['Google', 'LinkedIn', 'Upwork', 'Twitter', 'Facebook', 'Reddit'];
+
+  const toFetch = platforms.filter(p => {
+    const supported = SUPPORTED.some(s => s.toLowerCase() === p.toLowerCase());
+    if (!supported) logger.warn(`Unsupported platform, skipping: ${p}`);
+    return supported;
+  });
+
+  const settled = await Promise.allSettled(
+    toFetch.map(platform => fetchLeadsForPlatform(keyword, platform, filters, { includeStats: true }))
+  );
+
+  const allLeads = [];
+  const platformStats = [];
+
+  settled.forEach((result, i) => {
+    if (result.status === 'fulfilled') {
+      allLeads.push(...result.value.leads);
+      platformStats.push(result.value.stats);
+    } else {
+      logger.error(`${toFetch[i]} fetch failed`, { error: result.reason?.message });
+      platformStats.push({
+        platform: toFetch[i],
+        serpResults: 0,
+        withEmail: 0,
+        afterDateFilter: 0,
+        error: result.reason?.message,
+      });
+    }
+  });
+
+  const seen = new Set();
+  const dedupedLeads = allLeads.filter(lead => {
+    if (seen.has(lead.email)) return false;
+    seen.add(lead.email);
+    return true;
+  });
+
+  return {
+    leads: dedupedLeads,
+    stats: {
+      platforms: platformStats,
+      serpResults: platformStats.reduce((sum, stat) => sum + (stat.serpResults || 0), 0),
+      withEmail: platformStats.reduce((sum, stat) => sum + (stat.withEmail || 0), 0),
+      afterDateFilter: platformStats.reduce((sum, stat) => sum + (stat.afterDateFilter || 0), 0),
+    },
+  };
+}
+
 
 // ─── Named exports ────────────────────────────────────────────────────────────
 
@@ -434,6 +507,7 @@ exports.validateEnv        = validateEnv;
 exports.fetchGoogleLeads        = fetchGoogleLeads;
 exports.fetchLeadsForPlatform   = fetchLeadsForPlatform;
 exports.fetchLeadsFromPlatforms = fetchLeadsFromPlatforms;
+exports.fetchLeadsFromPlatformsWithStats = fetchLeadsFromPlatformsWithStats;
 exports.buildSearchQuery        = buildSearchQuery;
 exports.extractEmails           = extractEmails;
 exports.isClientPost            = isClientPost;

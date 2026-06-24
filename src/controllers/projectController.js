@@ -110,7 +110,7 @@ exports.getProjectById = async (req, res) => {
 
     const project = await Project.findOne({
       _id: projectId,
-      userId: req.user._id,
+      userId: req.user.id,
     }).populate('leadId');
 
     if (!project) {
@@ -153,7 +153,7 @@ exports.deleteProject = async (req, res) => {
 
     const project = await Project.findOneAndDelete({
       _id: projectId,
-      userId: req.user._id,
+      userId: req.user.id,
     });
 
     if (!project) {

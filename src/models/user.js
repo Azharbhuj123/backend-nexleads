@@ -40,6 +40,18 @@ const userSchema = new mongoose.Schema({
       type: Date,
       default: () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     },
+    billingCycle: {
+      type: String,
+      default: 'monthly',
+    },
+    status: {
+      type: String,
+      enum: ['active', 'cancelled'],
+      default: 'active',
+    },
+    stripeSubscriptionId: {
+      type: String,
+    },
   },
   resetPasswordToken: String,
   resetPasswordExpire: Date,

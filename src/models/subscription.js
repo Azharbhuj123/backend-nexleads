@@ -36,6 +36,12 @@ const subscriptionSchema = new mongoose.Schema({
   transactionId: {
     type: String,
   },
+  stripeSubscriptionId: {
+    type: String,
+  },
+  cancelledAt: {
+    type: Date,
+  },
 });
 
 module.exports = mongoose.model('Subscription', subscriptionSchema);

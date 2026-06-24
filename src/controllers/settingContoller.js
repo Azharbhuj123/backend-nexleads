@@ -4,6 +4,44 @@ const bcrypt = require('bcryptjs');
 const { uploadToS3 } = require('../utils/s3Uploader');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
+const PLAN_DETAILS = {
+  free: { leadsLimit: 30, price: 0, monthlyPrice: 0, annualPrice: 0 },
+  pro: { leadsLimit: 100, monthlyPrice: 29, annualPrice: 295 },
+  platinum: { leadsLimit: -1, monthlyPrice: 99, annualPrice: 1009 }
+};
+
+const getPlanPrice = (plan, billingCycle = 'monthly') => {
+  const planDetails = PLAN_DETAILS[plan];
+  if (!planDetails) return null;
+  if (plan === 'free') return 0;
+  return billingCycle === 'annually' ? planDetails.annualPrice : planDetails.monthlyPrice;
+};
+
+const cancelActiveSubscriptionForUser = async (userId) => {
+  const activeSubscription = await Subscription.findOne({ userId, status: 'active' })
+    .sort({ startDate: -1, _id: -1 });
+
+  if (!activeSubscription) {
+    return null;
+  }
+
+  if (activeSubscription.stripeSubscriptionId) {
+    try {
+      await stripe.subscriptions.cancel(activeSubscription.stripeSubscriptionId);
+    } catch (stripeError) {
+      if (stripeError.code !== 'resource_missing') {
+        throw stripeError;
+      }
+    }
+  }
+
+  activeSubscription.status = 'cancelled';
+  activeSubscription.cancelledAt = new Date();
+  await activeSubscription.save();
+
+  return activeSubscription;
+};
+
 exports.updatePersonalInfo = async (req, res) => {
   try {
     const { name, bio } = req.body;
@@ -141,20 +179,11 @@ exports.createPaymentIntent = async (req, res) => {
     const userId = req.user.id;
     const { plan, billingCycle } = req.body;
 
-    // Plan pricing
-    const planPricing = {
-      free: { monthly: 0, annual: 0 },
-      pro: { monthly: 29, annual: 295 },
-      platinum: { monthly: 99, annual: 1009 }
-    };
-
-    if (!planPricing[plan]) {
+    if (!PLAN_DETAILS[plan]) {
       return res.status(400).json({ message: 'Invalid plan selected' });
     }
 
-    const amount = billingCycle === 'annually' 
-      ? planPricing[plan].annual 
-      : planPricing[plan].monthly;
+    const amount = getPlanPrice(plan, billingCycle);
 
     // Free plan doesn't need payment
     if (amount === 0) {
@@ -221,19 +250,13 @@ exports.updateSubscription = async (req, res) => {
     const userId = req.user.id;
     const { plan, paymentIntentId, billingCycle } = req.body;
 
-    const planDetails = {
-      free: { leadsLimit: 30, price: 0 },
-      pro: { leadsLimit: 100, monthlyPrice: 29, annualPrice: 295 },
-      platinum: { leadsLimit: -1, monthlyPrice: 99, annualPrice: 1009 }
-    };
-
-    if (!planDetails[plan]) {
+    if (!PLAN_DETAILS[plan]) {
       return res.status(400).json({ message: 'Invalid plan' });
     }
 
     let paymentMethod = null;
     let transactionId = null;
-    let price = planDetails[plan].price || 0;
+    let price = getPlanPrice(plan, billingCycle);
 
     // For paid plans, verify payment with Stripe
     if (plan !== 'free') {
@@ -271,9 +294,7 @@ exports.updateSubscription = async (req, res) => {
         }
 
         transactionId = paymentIntent.id;
-        price = billingCycle === 'annually' 
-          ? planDetails[plan].annualPrice 
-          : planDetails[plan].monthlyPrice;
+        price = getPlanPrice(plan, billingCycle);
 
       } catch (stripeError) {
         console.error('Stripe verification error:', stripeError);
@@ -293,6 +314,8 @@ exports.updateSubscription = async (req, res) => {
       }
     }
 
+    const cancelledSubscription = await cancelActiveSubscriptionForUser(userId);
+
     // Calculate subscription end date
     const subscriptionDays = billingCycle === 'annually' ? 365 : 30;
     const endDate = new Date(Date.now() + subscriptionDays * 24 * 60 * 60 * 1000);
@@ -304,6 +327,7 @@ exports.updateSubscription = async (req, res) => {
       price,
       paymentMethod,
       transactionId,
+      stripeSubscriptionId: null,
       billingCycle: billingCycle || 'monthly',
       startDate: new Date(),
       endDate: endDate,
@@ -315,10 +339,12 @@ exports.updateSubscription = async (req, res) => {
       userId,
       {
         'subscription.plan': plan,
-        'subscription.leadsLimit': planDetails[plan].leadsLimit,
+        'subscription.leadsLimit': PLAN_DETAILS[plan].leadsLimit,
         'subscription.leadsUsed': 0,
         'subscription.resetDate': endDate,
-        'subscription.status': 'active'
+        'subscription.billingCycle': billingCycle || 'monthly',
+        'subscription.status': 'active',
+        'subscription.stripeSubscriptionId': null
       },
       { new: true }
     ).select('-password');
@@ -330,6 +356,13 @@ exports.updateSubscription = async (req, res) => {
     res.json({
       message: 'Subscription updated successfully',
       subscription: user.subscription,
+      cancelledSubscription: cancelledSubscription
+        ? {
+            id: cancelledSubscription._id,
+            plan: cancelledSubscription.plan,
+            cancelledAt: cancelledSubscription.cancelledAt
+          }
+        : null,
       subscriptionRecord: {
         id: subscriptionRecord._id,
         plan: subscriptionRecord.plan,
@@ -352,7 +385,7 @@ exports.getSubscriptionHistory = async (req, res) => {
     const userId = req.user.id;
 
     const history = await Subscription.find({ userId })
-      .sort({ createdAt: -1 })
+      .sort({ startDate: -1, _id: -1 })
       .limit(10);
 
     res.json({
@@ -372,13 +405,19 @@ exports.cancelSubscription = async (req, res) => {
   try {
     const userId = req.user.id;
 
+    const cancelledSubscription = await cancelActiveSubscriptionForUser(userId);
+
     // Update user to free plan
     const user = await User.findByIdAndUpdate(
       userId,
       {
         'subscription.plan': 'free',
         'subscription.leadsLimit': 30,
-        'subscription.status': 'cancelled'
+        'subscription.leadsUsed': 0,
+        'subscription.resetDate': new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        'subscription.billingCycle': 'monthly',
+        'subscription.status': 'cancelled',
+        'subscription.stripeSubscriptionId': null
       },
       { new: true }
     ).select('-password');
@@ -387,18 +426,16 @@ exports.cancelSubscription = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Mark current subscription as cancelled
-    await Subscription.findOneAndUpdate(
-      { userId, status: 'active' },
-      { 
-        status: 'cancelled',
-        cancelledAt: new Date()
-      }
-    );
-
     res.json({
       message: 'Subscription cancelled successfully',
-      subscription: user.subscription
+      subscription: user.subscription,
+      cancelledSubscription: cancelledSubscription
+        ? {
+            id: cancelledSubscription._id,
+            plan: cancelledSubscription.plan,
+            cancelledAt: cancelledSubscription.cancelledAt
+          }
+        : null
     });
   } catch (error) {
     console.error('Cancel subscription error:', error);

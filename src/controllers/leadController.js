@@ -1,4 +1,4 @@
-const { fetchLeadsFromPlatforms, validateEnv } = require("../utils/leadfetcher");
+const { fetchLeadsFromPlatformsWithStats, validateEnv } = require("../utils/leadfetcher");
 const Lead = require('../models/lead');
 
 exports.searchLeads = async (req, res) => {
@@ -6,7 +6,7 @@ exports.searchLeads = async (req, res) => {
     validateEnv();
 
     const userId = req.user._id;
-    const { keyword, platforms, dateFrom, dateTo } = req.query;
+    const { keyword, platforms, dateFrom, dateTo, startDate, endDate } = req.query;
 
     if (!keyword) {
       return res.status(400).json({ message: 'Keyword is required' });
@@ -17,15 +17,22 @@ exports.searchLeads = async (req, res) => {
       : ['Google', 'LinkedIn', 'Upwork', 'Twitter', 'Facebook', 'Reddit'];
 
     const filters = {
-      dateFrom: dateFrom ? new Date(dateFrom) : null,
-      dateTo:   dateTo   ? new Date(dateTo)   : null,
+      dateFrom: dateFrom || startDate ? new Date(dateFrom || startDate) : null,
+      dateTo:   dateTo || endDate ? new Date(dateTo || endDate) : null,
     };
 
     // 1️⃣ Fetch from all platforms
-    const fetchedLeads = await fetchLeadsFromPlatforms(keyword, platformArray, filters);
+    const fetchResult = await fetchLeadsFromPlatformsWithStats(keyword, platformArray, filters);
+    const fetchedLeads = fetchResult.leads;
+    const searchSummary = {
+      foundResults: fetchResult.stats.serpResults,
+      withEmails: fetchResult.stats.withEmail,
+      afterDateFilter: fetchResult.stats.afterDateFilter,
+      platforms: fetchResult.stats.platforms,
+    };
 
     if (!fetchedLeads.length) {
-      return res.json({ message: 'No leads found', leads: [] });
+      return res.json({ message: 'No leads found', leads: [], summary: searchSummary });
     }
 
     // 2️⃣ Dedup against existing DB records
@@ -43,6 +50,7 @@ exports.searchLeads = async (req, res) => {
         fetched: fetchedLeads.length,
         saved: 0,
         leads: [],
+        summary: searchSummary,
       });
     }
 
@@ -83,6 +91,7 @@ exports.searchLeads = async (req, res) => {
       fetched: fetchedLeads.length,
       saved:   savedLeads.length,
       leads:   savedLeads,
+      summary: searchSummary,
     });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching/saving leads', error: error.message });
@@ -132,7 +141,7 @@ exports.updateLeadStatus = async (req, res) => {
     const { status } = req.body;
 
     const lead = await Lead.findOneAndUpdate(
-      { _id: leadId, userId: req.user._id },
+      { _id: leadId, userId: req.user.id },
       { status },
       { new: true }
     );

@@ -153,6 +153,7 @@ exports.forgotPassword = async (req, res) => {
     const resetUrl = `${process.env.FRONTEND_URL}/login?token=${resetToken}`;
 
     await transporter.sendMail({
+      from: `"NexLeads" <${process.env.SMTP_EMAIL}>`,
       to: email,
       subject: 'Password Reset Request',
       html: `<p>Click <a href="${resetUrl}">here</a> to reset your password. Link expires in 10 minutes.</p>`
@@ -197,7 +198,8 @@ exports.getProfile = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-    const subscription = await Subscription.findOne({ userId: user._id });
+    const subscription = await Subscription.findOne({ userId: user._id, status: 'active' })
+      .sort({ startDate: -1, _id: -1 });
     res.json({ user, subscription });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching profile', error: error.message });
