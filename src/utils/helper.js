@@ -25,6 +25,97 @@ const transporter = nodemailer.createTransport({
 });
 module.exports.transporter = transporter;
 
+const COMMON_HTML_TAG_PATTERN = /<\/?(?:a|b|blockquote|br|div|em|h[1-6]|i|li|ol|p|span|strong|table|tbody|td|th|thead|tr|u|ul)(?:\s[^>]*)?>/i;
+
+const escapeHtml = (value) =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const preserveSpaces = (value) =>
+  escapeHtml(value.replace(/\t/g, "    ")).replace(/ {2,}/g, (spaces) => "&nbsp;".repeat(spaces.length));
+
+const renderParagraph = (lines) => `<p>${lines.map(preserveSpaces).join("<br>")}</p>`;
+
+const renderList = (type, items) => {
+  if (!items.length) return "";
+  return `<${type}>${items.map((item) => `<li>${preserveSpaces(item)}</li>`).join("")}</${type}>`;
+};
+
+const flushList = (blocks, listType, listItems) => {
+  if (listType && listItems.length) {
+    blocks.push(renderList(listType, listItems));
+  }
+};
+
+exports.formatEmailHtml = (body = "") => {
+  const rawBody = String(body);
+
+  if (COMMON_HTML_TAG_PATTERN.test(rawBody)) {
+    return rawBody;
+  }
+
+  const lines = rawBody.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const blocks = [];
+  let paragraphLines = [];
+  let listType = null;
+  let listItems = [];
+
+  const flushParagraph = () => {
+    if (paragraphLines.length) {
+      blocks.push(renderParagraph(paragraphLines));
+      paragraphLines = [];
+    }
+  };
+
+  const startOrContinueList = (type, content) => {
+    flushParagraph();
+
+    if (listType && listType !== type) {
+      flushList(blocks, listType, listItems);
+      listItems = [];
+    }
+
+    listType = type;
+    listItems.push(content);
+  };
+
+  for (const line of lines) {
+    if (!line.trim()) {
+      flushParagraph();
+      flushList(blocks, listType, listItems);
+      listType = null;
+      listItems = [];
+      continue;
+    }
+
+    const unorderedMatch = line.match(/^\s*[-*\u2022]\s+(.+)$/);
+    if (unorderedMatch) {
+      startOrContinueList("ul", unorderedMatch[1]);
+      continue;
+    }
+
+    const orderedMatch = line.match(/^\s*\d+[.)]\s+(.+)$/);
+    if (orderedMatch) {
+      startOrContinueList("ol", orderedMatch[1]);
+      continue;
+    }
+
+    flushList(blocks, listType, listItems);
+    listType = null;
+    listItems = [];
+    paragraphLines.push(line);
+  }
+
+  flushParagraph();
+  flushList(blocks, listType, listItems);
+
+  return `<div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827;">${blocks.join("")}</div>`;
+};
+
 exports.sendEmail = async (options) => {
   try {
     const mailOptions = {

@@ -3,7 +3,7 @@ const Email = require('../models/email');
 const Lead = require('../models/lead');
 const User = require('../models/user');
 
-const { sendEmail, sendBulkEmails } = require('../utils/helper');
+const { sendEmail, sendBulkEmails, formatEmailHtml } = require('../utils/helper');
 const { uploadToS3 } = require('../utils/s3Uploader');
 const { simpleParser } = require('mailparser');
 const Imap = require('imap');
@@ -38,6 +38,7 @@ exports.composeEmail = async (req, res) => {
       }
     }
     const emailsSent = [];
+    const formattedBody = formatEmailHtml(body);
 
     for (const lead of leads) {
       const emailData = {
@@ -63,7 +64,7 @@ exports.composeEmail = async (req, res) => {
         replyTo: userData.email,
         to: lead.email,
         subject,
-        html: body + trackingPixel,
+        html: formattedBody + trackingPixel,
         attachments: attachments.map(att => ({ filename: att.filename, path: att.url })),
         headers: {
           "X-Entity-Ref-ID": email._id.toString()
@@ -141,11 +142,12 @@ exports.sendBulkEmail = async (req, res) => {
       return res.status(400).json({ message: 'Recipients array is required' });
     }
 
+    const formattedBody = formatEmailHtml(body);
     const emailPromises = recipients.map(recipient => ({
       from: req.user.nexleadsEmail,
       to: recipient.email,
       subject,
-      html: body,
+      html: formattedBody,
     }));
 
     const results = await sendBulkEmails(emailPromises);
@@ -328,12 +330,14 @@ exports.upsetEmail = async (req, res) => {
         <img src="${process.env.API_BASE_URL}/user/open/${email._id}.png" style="display:none" />
       `;
 
+    const formattedBody = formatEmailHtml(body);
+
     const emailOptions = {
       from: `NexLeads <${process.env.SMTP_EMAIL}>`,
       replyTo: userData.email,
       to: email.to,
       subject: email.subject,
-      html: body + trackingPixel,
+      html: formattedBody + trackingPixel,
       headers: {
         'X-Entity-Ref-ID': email._id.toString(),
       }

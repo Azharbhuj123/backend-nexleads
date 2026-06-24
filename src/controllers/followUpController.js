@@ -1,6 +1,6 @@
 const FollowUp = require('../models/followup');
 const Email = require('../models/email');
-const { sendBulkEmails } = require('../utils/helper');
+const { sendBulkEmails, formatEmailHtml } = require('../utils/helper');
 
 
 exports.getFollowUpStats = async (req, res) => {
@@ -39,12 +39,14 @@ exports.sendFollowUp = async (req, res) => {
       return res.status(404).json({ message: 'Follow-up record not found' });
     }
 
+    const formattedBody = formatEmailHtml(body);
+
     // Send emails to recipients
     const emailPromises = recipients.map(recipient => ({
       from: req.user.nexleadsEmail,
       to: recipient.email,
       subject,
-      html: body,
+      html: formattedBody,
     }));
 
     await sendBulkEmails(emailPromises);
