@@ -4,11 +4,20 @@ const emailSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
   },
   leadId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Lead',
+  },
+  followUpId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'FollowUp',
+    index: true,
+  },
+  originalEmailId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Email',
+    index: true,
   },
   from: {
     type: String,
@@ -24,7 +33,7 @@ const emailSchema = new mongoose.Schema({
   },
   body: {
     type: String,
-    required: true,
+    default: '',
   },
   attachments: [{
     filename: String,
@@ -52,7 +61,15 @@ const emailSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
-   messageId: {
+  messageId: {
+    type: String,
+    index: true,
+  },
+  providerMessageId: {
+    type: String,
+    index: true,
+  },
+  replyAlias: {
     type: String,
     index: true,
   },
@@ -65,6 +82,13 @@ const emailSchema = new mongoose.Schema({
     index: true,
   },
   references: [String],
+  matchStatus: {
+    type: String,
+    enum: ['matched', 'unmatched'],
+  },
+  headers: {
+    type: mongoose.Schema.Types.Mixed,
+  },
   sentAt: {
     type: Date,
     default: Date.now,

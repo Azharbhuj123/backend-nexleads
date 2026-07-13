@@ -3,30 +3,61 @@ const Email = require('../models/email');
 const Lead = require('../models/lead');
 const User = require('../models/user');
 
-const { sendEmail, sendBulkEmails, formatEmailHtml } = require('../utils/helper');
+const { sendEmail, formatEmailHtml } = require('../utils/helper');
 const { uploadToS3 } = require('../utils/s3Uploader');
 const { simpleParser } = require('mailparser');
 const Imap = require('imap');
 const { fetchNewReplies } = require('../utils/emailSyncService');
 
+const getReplyAlias = (emailId) => `reply+${emailId}@${process.env.REPLY_DOMAIN || 'nexleads.online'}`;
+
+const applySentMetadata = async (email, result, replyAlias) => {
+  email.replyAlias = replyAlias;
+
+  if (result.success) {
+    email.providerMessageId = result.messageId;
+    email.messageId = result.messageId;
+    email.threadId = email.threadId || result.messageId;
+    email.sentAt = new Date();
+  }
+
+  await email.save();
+};
+
 exports.composeEmail = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { subject, body, leadIds } = req.body;
+    const { subject, body, leadIds, to } = req.body;
 
     const userData = await User.findById(userId);
     if (!userData) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Convert leadIds string to array if needed
-    const leadsArray = typeof leadIds === "string" ? JSON.parse(leadIds) : leadIds;
+    let leadsArray = [];
+    if (leadIds) {
+      leadsArray = typeof leadIds === "string" ? JSON.parse(leadIds) : leadIds;
+    }
 
-    // Fetch leads from DB
-    const leads = await Lead.find({ _id: { $in: leadsArray } });
+    const leads = Array.isArray(leadsArray) && leadsArray.length
+      ? await Lead.find({ _id: { $in: leadsArray } })
+      : [];
 
-    if (!leads.length) {
-      return res.status(404).json({ message: "No leads found for these IDs" });
+    const recipients = leads.map((lead) => ({
+      email: lead.email,
+      lead,
+    }));
+
+    if (!recipients.length && to) {
+      String(to)
+        .split(',')
+        .map((email) => email.trim())
+        .filter(Boolean)
+        .forEach((email) => recipients.push({ email, lead: null }));
+    }
+
+    if (!recipients.length) {
+      return res.status(404).json({ message: "No recipients found" });
     }
 
     // Upload attachments
@@ -40,12 +71,13 @@ exports.composeEmail = async (req, res) => {
     const emailsSent = [];
     const formattedBody = formatEmailHtml(body);
 
-    for (const lead of leads) {
+    for (const recipient of recipients) {
+      const lead = recipient.lead;
       const emailData = {
         userId,
-        leadId: lead._id,
+        leadId: lead?._id,
         from: userData.nexleadsEmail,
-        to: lead.email, // ✅ Use DB email
+        to: recipient.email,
         subject,
         body,
         attachments,
@@ -54,6 +86,7 @@ exports.composeEmail = async (req, res) => {
       };
 
       const email = await Email.create(emailData);
+      const replyAlias = getReplyAlias(email._id);
 
       const trackingPixel = `
         <img src="${process.env.API_BASE_URL}/user/open/${email._id}.png" style="display:none" />
@@ -61,8 +94,8 @@ exports.composeEmail = async (req, res) => {
 
       const emailOptions = {
         from: `NexLeads <${process.env.SMTP_EMAIL}>`,
-        replyTo: userData.email,
-        to: lead.email,
+        replyTo: replyAlias,
+        to: recipient.email,
         subject,
         html: formattedBody + trackingPixel,
         attachments: attachments.map(att => ({ filename: att.filename, path: att.url })),
@@ -72,20 +105,16 @@ exports.composeEmail = async (req, res) => {
       };
 
       const result = await sendEmail(emailOptions);
-
-      if (result.success) {
-        email.messageId = result.messageId;
-        email.threadId = result.messageId;
-        email.sentAt = new Date();
-        await email.save();
-      }
+      await applySentMetadata(email, result, replyAlias);
 
       // Update lead stats
-      await Lead.findByIdAndUpdate(lead._id, {
-        $inc: { emailsSent: 1 },
-        lastContactedAt: new Date(),
-        status: "contacted",
-      });
+      if (lead?._id) {
+        await Lead.findByIdAndUpdate(lead._id, {
+          $inc: { emailsSent: 1 },
+          lastContactedAt: new Date(),
+          status: "contacted",
+        });
+      }
 
       emailsSent.push(email);
     }
@@ -142,32 +171,41 @@ exports.sendBulkEmail = async (req, res) => {
       return res.status(400).json({ message: 'Recipients array is required' });
     }
 
+    const userData = await User.findById(userId);
+    if (!userData) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
     const formattedBody = formatEmailHtml(body);
-    const emailPromises = recipients.map(recipient => ({
-      from: req.user.nexleadsEmail,
-      to: recipient.email,
-      subject,
-      html: formattedBody,
-    }));
+    const results = [];
 
-    const results = await sendBulkEmails(emailPromises);
-
-    // Save emails to database
-    const emailDocs = recipients.map(recipient => ({
-      userId,
-      leadId: recipient.leadId,
-      from: req.user.nexleadsEmail,
-      to: recipient.email,
-      subject,
-      body,
-      type: 'sent',
-      folder: 'sent',
-    }));
-
-    await Email.insertMany(emailDocs);
-
-    // Update leads
     for (const recipient of recipients) {
+      const email = await Email.create({
+        userId,
+        leadId: recipient.leadId,
+        from: userData.nexleadsEmail,
+        to: recipient.email,
+        subject,
+        body,
+        type: 'sent',
+        folder: 'sent',
+      });
+
+      const replyAlias = getReplyAlias(email._id);
+      const result = await sendEmail({
+        from: `NexLeads <${process.env.SMTP_EMAIL}>`,
+        replyTo: replyAlias,
+        to: recipient.email,
+        subject,
+        html: formattedBody,
+        headers: {
+          'X-Entity-Ref-ID': email._id.toString(),
+        },
+      });
+
+      await applySentMetadata(email, result, replyAlias);
+      results.push(result);
+
       if (recipient.leadId) {
         await Lead.findByIdAndUpdate(recipient.leadId, {
           $inc: { emailsSent: 1 },
@@ -175,6 +213,8 @@ exports.sendBulkEmail = async (req, res) => {
           status: 'contacted',
         });
       }
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
     res.json({
@@ -331,10 +371,11 @@ exports.upsetEmail = async (req, res) => {
       `;
 
     const formattedBody = formatEmailHtml(body);
+    const replyAlias = getReplyAlias(email._id);
 
     const emailOptions = {
       from: `NexLeads <${process.env.SMTP_EMAIL}>`,
-      replyTo: userData.email,
+      replyTo: replyAlias,
       to: email.to,
       subject: email.subject,
       html: formattedBody + trackingPixel,
@@ -349,15 +390,7 @@ exports.upsetEmail = async (req, res) => {
     }
 
     const result = await sendEmail(emailOptions);
-
-    if (result.success) {
-      email.messageId = result.messageId;
-      if (!email.threadId) {
-        email.threadId = result.messageId;
-      }
-      email.sentAt = new Date();
-      await email.save();
-    }
+    await applySentMetadata(email, result, replyAlias);
 
     // Update lead stats
     if (email.leadId) {

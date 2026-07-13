@@ -1,6 +1,23 @@
 const FollowUp = require('../models/followup');
 const Email = require('../models/email');
-const { sendBulkEmails, formatEmailHtml } = require('../utils/helper');
+const User = require('../models/user');
+const Lead = require('../models/lead');
+const { sendEmail, formatEmailHtml } = require('../utils/helper');
+
+const getReplyAlias = (emailId) => `reply+${emailId}@${process.env.REPLY_DOMAIN || 'nexleads.online'}`;
+
+const applySentMetadata = async (email, result, replyAlias) => {
+  email.replyAlias = replyAlias;
+
+  if (result.success) {
+    email.providerMessageId = result.messageId;
+    email.messageId = result.messageId;
+    email.threadId = email.threadId || result.messageId;
+    email.sentAt = new Date();
+  }
+
+  await email.save();
+};
 
 
 exports.getFollowUpStats = async (req, res) => {
@@ -39,31 +56,50 @@ exports.sendFollowUp = async (req, res) => {
       return res.status(404).json({ message: 'Follow-up record not found' });
     }
 
+    const userData = await User.findById(userId);
+    if (!userData) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
     const formattedBody = formatEmailHtml(body);
 
-    // Send emails to recipients
-    const emailPromises = recipients.map(recipient => ({
-      from: req.user.nexleadsEmail,
-      to: recipient.email,
-      subject,
-      html: formattedBody,
-    }));
+    for (const recipient of recipients) {
+      const email = await Email.create({
+        userId,
+        leadId: recipient.leadId,
+        followUpId,
+        from: userData.nexleadsEmail,
+        to: recipient.email,
+        subject,
+        body,
+        type: 'sent',
+        folder: 'sent',
+      });
 
-    await sendBulkEmails(emailPromises);
+      const replyAlias = getReplyAlias(email._id);
+      const result = await sendEmail({
+        from: `NexLeads <${process.env.SMTP_EMAIL}>`,
+        replyTo: replyAlias,
+        to: recipient.email,
+        subject,
+        html: formattedBody,
+        headers: {
+          'X-Entity-Ref-ID': email._id.toString(),
+        },
+      });
 
-    // Save emails to database
-    const emailDocs = recipients.map(recipient => ({
-      userId,
-      leadId: recipient.leadId,
-      from: req.user.nexleadsEmail,
-      to: recipient.email,
-      subject,
-      body,
-      type: 'sent',
-      folder: 'sent',
-    }));
+      await applySentMetadata(email, result, replyAlias);
 
-    await Email.insertMany(emailDocs);
+      if (recipient.leadId) {
+        await Lead.findByIdAndUpdate(recipient.leadId, {
+          $inc: { emailsSent: 1 },
+          lastContactedAt: new Date(),
+          status: 'contacted',
+        });
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
 
     // Update follow-up stats
     followUp.followUpsSent += recipients.length;

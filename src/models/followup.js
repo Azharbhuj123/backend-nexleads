@@ -30,6 +30,10 @@ const followUpSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  responsesReceived: {
+    type: Number,
+    default: 0,
+  },
   emailsBounced: {
     type: Number,
     default: 0,
