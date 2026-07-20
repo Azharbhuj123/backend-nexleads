@@ -400,6 +400,8 @@ exports.upsetEmail = async (req, res) => {
       });
     }
 
+
+
     res.status(201).json({
       message: "Email sent successfully",
       email,
@@ -432,5 +434,28 @@ exports.checkEmailReplies = async (req, res) => {
       message: "Error checking email replies",
       error: error.message,
     });
+  }
+};
+
+exports.markAsRead = async (req, res) => {
+  try {
+    const { emailId } = req.params;
+
+    const email = await Email.findOneAndUpdate(
+      { _id: emailId, userId: req.user.id },
+      { isRead: true },
+      { new: true }
+    );
+
+    if (!email) {
+      return res.status(404).json({ message: 'Email not found' });
+    }
+
+    res.json({
+      message: 'Email marked as read',
+      email,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error marking email as read', error: error.message });
   }
 };
